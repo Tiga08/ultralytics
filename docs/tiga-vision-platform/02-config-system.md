@@ -32,20 +32,20 @@ class TvpConfig(BaseModel):
 
 ### 各子配置说明
 
-| 模型 | 关键字段 | 默认值 |
-|------|---------|--------|
-| `ServerConfig` | `host`, `port` | `0.0.0.0`, `8555` |
-| `VideoConfig` | `capture_backend`, `reconnect_interval`, `frame_queue_size` | `ffmpeg`, `5`, `30` |
-| `InferenceConfig` | `backend`, `thread_count` | `auto`, `4` |
-| `TrackingConfig` | `high_thresh`, `low_thresh`, `buffer` | `0.6`, `0.1`, `30` |
-| `HealthConfig` | `check_interval`, `restart_on_failure`, `max_restart_count` | `30`, `true`, `3` |
-| `LoggingConfig` | `level`, `format`, `file_path` | `INFO`, `json`, `logs/` |
+| 模型 | 关键字段 | 默认值 | 单位/说明 |
+|------|---------|--------|----------|
+| `ServerConfig` | `host`, `port` | `0.0.0.0`, `8555` | — |
+| `VideoConfig` | `capture_backend`, `reconnect_interval`, `frame_queue_size` | `ffmpeg`, `5`, `30` | `reconnect_interval` 单位：秒；`frame_queue_size` 单位：帧数 |
+| `InferenceConfig` | `backend`, `thread_count` | `auto`, `4` | `backend`：`auto \| pytorch \| tensorrt \| cpu` |
+| `TrackingConfig` | `high_thresh`, `low_thresh`, `buffer` | `0.6`, `0.1`, `30` | `buffer` 单位：帧数（遮挡容忍帧数） |
+| `HealthConfig` | `check_interval`, `restart_on_failure`, `max_restart_count` | `30`, `true`, `3` | `check_interval` 单位：秒 |
+| `LoggingConfig` | `level`, `format`, `file_path` | `INFO`, `json`, `logs/` | `format`：`json \| text` |
 
 ### ModelWeightsConfig — RootModel 设计
 
 ```python
 class ModelWeightEntry(BaseModel):
-    path: str
+    path: str        # 相对于项目根目录（run.py 所在目录），或使用绝对路径
     imgsz: int = 640
     conf: float = 0.3
 
@@ -149,6 +149,84 @@ health:
   restart_on_failure: true
   max_restart_count: 3
 ```
+
+---
+
+## 完整 config.yaml 模板
+
+以下为包含所有字段的完整配置模板（可选项标有注释）：
+
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 8555
+
+video:
+  capture_backend: "ffmpeg"
+  reconnect_interval: 5     # 断线重连间隔（秒）
+  frame_queue_size: 30      # 内部帧缓冲大小（帧数）
+
+inference:
+  backend: "auto"           # auto | pytorch | tensorrt | cpu
+  thread_count: 4
+
+model_weights:
+  yolo_detection:
+    path: "weights/yolov8m_det.pt"    # 相对于项目根目录，或绝对路径
+    imgsz: 960
+    conf: 0.3
+  # person_det:                       # 新增模型只需在此追加，无需修改代码
+  #   path: "weights/yolo11x.pt"
+  #   imgsz: 640
+  #   conf: 0.25
+
+tracking:
+  high_thresh: 0.6
+  low_thresh: 0.1
+  buffer: 30                # 遮挡容忍帧数
+
+# kafka:                    # 可选，注释掉或设为 null 表示禁用
+#   bootstrap_servers: "tiga-kafka:9092"
+#   topic_violation: "tvp_violation_events"
+
+# minio:                    # 可选
+#   endpoint: "tiga-minio:9000"
+#   access_key: "..."       # 建议通过环境变量 TVP__MINIO__ACCESS_KEY 注入
+#   secret_key: "..."       # 建议通过环境变量 TVP__MINIO__SECRET_KEY 注入
+#   bucket: "tvp-evidence"
+#   secure: false
+
+# mqtt:                     # 可选
+#   host: "tiga-mqtt"
+#   port: 1883
+#   topic_violation: "tvp/violation"
+
+logging:
+  level: "INFO"             # DEBUG | INFO | WARNING | ERROR
+  format: "json"            # json | text
+  file_path: "logs/"
+
+health:
+  check_interval: 30        # 健康检查间隔（秒）
+  restart_on_failure: true
+  max_restart_count: 3
+  # camera_timeout: 60      # 摄像头无新帧超时（秒），建议新增字段
+```
+
+---
+
+## 安全实践
+
+敏感字段（密钥、密码）**不应**明文写入版本控制的 `config.yaml`。推荐做法：
+
+```bash
+# 通过环境变量注入敏感值
+export TVP__MINIO__ACCESS_KEY=minioadmin
+export TVP__MINIO__SECRET_KEY=your_secret
+export TVP__KAFKA__BOOTSTRAP_SERVERS=kafka.internal:9092
+```
+
+或使用 `.env` 文件（加入 `.gitignore`）配合 `python-dotenv` 在启动前加载。
 
 ---
 

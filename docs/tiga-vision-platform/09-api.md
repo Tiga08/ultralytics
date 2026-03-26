@@ -8,19 +8,19 @@
 
 ## 路由表
 
-| 方法 | 端点 | 说明 |
-|------|------|------|
-| POST | `/api/v1/tasks` | 创建并启动任务 |
-| DELETE | `/api/v1/tasks/{task_id}` | 删除任务（→ stopped） |
-| GET | `/api/v1/tasks/{task_id}` | 查询单个任务状态 |
-| GET | `/api/v1/tasks` | 列出所有任务 |
-| POST | `/api/v1/tasks/{task_id}/pause` | 暂停任务（→ paused） |
-| POST | `/api/v1/tasks/{task_id}/resume` | 恢复任务（→ running） |
-| GET | `/api/v1/cameras` | 列出所有摄像机 |
-| GET | `/api/v1/cameras/{camera_id}/status` | 摄像机状态 |
-| GET | `/api/v1/health` | 系统健康状态 |
-| GET | `/api/v1/metrics` | Prometheus 指标 |
-| GET | `/api/v1/plugins` | 列出已注册插件 |
+| 方法 | 端点 | 状态码 | 说明 |
+|------|------|--------|------|
+| POST | `/api/v1/tasks` | 201 | 创建并启动任务 |
+| DELETE | `/api/v1/tasks/{task_id}` | 204 / 404 | 删除任务（→ stopped）；任务不存在返回 404 |
+| GET | `/api/v1/tasks/{task_id}` | 200 / 404 | 查询单个任务状态 |
+| GET | `/api/v1/tasks` | 200 | 列出所有任务 |
+| POST | `/api/v1/tasks/{task_id}/pause` | 200 / 404 | 暂停任务（→ paused） |
+| POST | `/api/v1/tasks/{task_id}/resume` | 200 / 404 | 恢复任务（→ running） |
+| GET | `/api/v1/cameras` | 200 | 列出所有摄像机 |
+| GET | `/api/v1/cameras/{camera_id}/status` | 200 / 404 | 摄像机状态 |
+| GET | `/api/v1/health` | 200 | 系统健康状态 |
+| GET | `/api/v1/metrics` | 200 | Prometheus 指标（纯文本格式） |
+| GET | `/api/v1/plugins` | 200 | 列出已注册插件 |
 
 ---
 
@@ -189,8 +189,92 @@ TaskCreateRequest = TaskConfig   # POST /tasks 的请求体就是 TaskConfig
 
 ---
 
+### CameraResponse
+
+```python
+class CameraResponse(BaseModel):
+    camera_id: str
+    rtsp_url: str
+    task_count: int        # 当前绑定的任务数
+    is_healthy: bool       # 是否在正常采帧
+
+class CameraStatusResponse(BaseModel):
+    camera_id: str
+    is_healthy: bool
+    last_frame_ts: float   # 最近一帧的 Unix 时间戳
+    fps_actual: float      # 实际采帧速率（近 10 秒均值）
+```
+
+示例（`GET /api/v1/cameras/{camera_id}/status`）：
+
+```json
+{
+  "camera_id": "CAM_A1_001",
+  "is_healthy": true,
+  "last_frame_ts": 1711360245.3,
+  "fps_actual": 1.98
+}
+```
+
+### PluginsResponse
+
+```python
+class PluginsResponse(BaseModel):
+    detectors: list[str]   # 当前注册的检测器名称列表
+    outputs: list[str]     # 当前注册的输出适配器名称列表
+```
+
+示例：
+
+```json
+{
+  "detectors": ["regional_invasion", "helmet_detection"],
+  "outputs": ["kafka", "minio", "mqtt", "local"]
+}
+```
+
+> `GET /api/v1/plugins` 返回的是运行时动态注册列表，与代码中实际导入的插件同步。
+
+### Prometheus 指标（`GET /api/v1/metrics`）
+
+返回纯文本格式，供 Prometheus 抓取。主要指标：
+
+| 指标名 | 类型 | 说明 |
+|--------|------|------|
+| `tvp_task_total` | Gauge | 当前任务总数 |
+| `tvp_task_status{status="running"}` | Gauge | 各状态任务数 |
+| `tvp_frame_processed_total` | Counter | 累计处理帧数 |
+| `tvp_violation_total{detector="..."}` | Counter | 各检测器累计违规事件数 |
+| `tvp_inference_latency_ms` | Histogram | 推理延迟分布 |
+
+### 错误响应格式
+
+所有错误均返回统一格式：
+
+```python
+class ErrorResponse(BaseModel):
+    success: bool = False
+    message: str
+    code: int
+```
+
+示例：
+
+```json
+{
+  "success": false,
+  "message": "Task 'task_001' not found",
+  "code": 404
+}
+```
+
+常见错误码：`400`（请求参数错误）、`404`（资源不存在）、`409`（task_id 已存在）、`500`（引擎内部错误）。
+
+---
+
 ## 访问入口
 
 - API 服务：`http://0.0.0.0:8555`
 - OpenAPI 文档：`http://0.0.0.0:8555/docs`
 - ReDoc：`http://0.0.0.0:8555/redoc`
+- 当前版本不含认证（内网部署场景）；如需接入认证，可在 FastAPI 中添加 `HTTPBearer` 依赖。

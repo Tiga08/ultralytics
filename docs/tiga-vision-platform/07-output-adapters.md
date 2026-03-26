@@ -5,6 +5,17 @@
 - Kafka、MinIO、MQTT 均为可选插件，通过配置启用/禁用，可独立测试
 - 所有适配器全局共享（多个检测器复用同一实例），`send()` 须保证线程安全
 - 可选依赖在 `setup()` 内按需导入，未安装时仅在任务创建阶段报错，不影响启动
+- **`send()` 中必须捕获所有异常并记录日志，不得向上抛出**——任何适配器的网络/IO 错误不应中断 `CameraWorker` 线程
+
+## 线程安全说明
+
+| 适配器 | 线程安全依据 |
+|--------|------------|
+| `KafkaOutputAdapter` | `confluent-kafka` 的 `Producer` 是 C 扩展，自身线程安全 |
+| `MinioOutputAdapter` | MinIO 官方客户端无全局状态，线程安全 |
+| `MqttOutputAdapter` | `paho-mqtt` 使用后台线程处理 I/O，`publish()` 线程安全 |
+| `LocalOutputAdapter` | 文件写入无共享状态，天然线程安全 |
+| `WebhookOutputAdapter` | `httpx.Client` 支持并发请求，连接池线程安全 |
 
 ---
 
@@ -87,7 +98,8 @@ class MinioOutputAdapter(OutputAdapterBase):
         self._client = Minio(config.endpoint,
                              access_key=config.access_key,
                              secret_key=config.secret_key,
-                             secure=False)
+                             secure=getattr(config, "secure", False))
+        self._jpeg_quality = getattr(config, "jpeg_quality", 85)  # 建议在 MinioConfig 中添加 jpeg_quality: int = 85
         self._bucket = config.bucket
         if not self._client.bucket_exists(self._bucket):
             self._client.make_bucket(self._bucket)
@@ -96,7 +108,7 @@ class MinioOutputAdapter(OutputAdapterBase):
         if event.frame_snapshot is None:
             return
         ok, buf = cv2.imencode(".jpg", event.frame_snapshot,
-                               [cv2.IMWRITE_JPEG_QUALITY, 85])
+                               [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality])
         if not ok:
             return
         data = buf.tobytes()
@@ -190,6 +202,32 @@ class WebhookOutputAdapter(OutputAdapterBase):
 ```python
 from .webhook_output import WebhookOutputAdapter   # noqa: F401
 ```
+
+---
+
+## 多适配器联合配置示例
+
+同时启用 Kafka、MinIO、MQTT（在 `config.yaml` 中）：
+
+```yaml
+kafka:
+  bootstrap_servers: "tiga-kafka:9092"
+  topic_violation: "tvp_violation_events"
+
+minio:
+  endpoint: "tiga-minio:9000"
+  access_key: "minioadmin"      # 建议通过环境变量注入
+  secret_key: "minioadmin"
+  bucket: "tvp-evidence"
+  secure: false
+
+mqtt:
+  host: "tiga-mqtt"
+  port: 1883
+  topic_violation: "tvp/violation"
+```
+
+三者同时启用时，每个 `ViolationEvent` 会依次调用三个适配器的 `send()`，各适配器独立处理，互不影响。
 
 ---
 

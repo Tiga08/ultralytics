@@ -75,7 +75,10 @@ from pipeline.events import ViolationEvent
 
 class MockDetector(DetectorBase):
     """用于集成测试的 mock 检测器，记录 process() 调用次数"""
-    process_call_count = 0
+
+    def __init__(self, task_id, output_adapters):
+        super().__init__(task_id, output_adapters)
+        self.process_call_count = 0   # 实例变量，避免多实例共享状态
 
     def setup(self, config) -> None:
         pass
@@ -86,9 +89,7 @@ class MockDetector(DetectorBase):
 
 @pytest.fixture
 def mock_detector():
-    detector = MockDetector(task_id="test_task", output_adapters=[])
-    detector.process_call_count = 0
-    return detector
+    return MockDetector(task_id="test_task", output_adapters=[])
 ```
 
 ---
@@ -124,7 +125,12 @@ def test_camera_worker_processes_frames(local_camera_config, mock_detector):
     stop = threading.Event()
     worker._stop_event = stop
     worker.start()
-    time.sleep(3)
+
+    # 轮询等待，最多 10 秒；避免 sleep 硬编码导致假失败
+    deadline = time.time() + 10
+    while time.time() < deadline and mock_detector.process_call_count == 0:
+        time.sleep(0.1)
+
     stop.set()
     worker.join(timeout=5)
     assert mock_detector.process_call_count > 0
@@ -186,6 +192,26 @@ def test_kafka_adapter_send():
 ```
 
 集成测试中使用 Docker 启动临时服务（Kafka、MinIO、MQTT）。
+
+> **注意**：集成测试中 `HealthMonitor` 的自动重启行为可能干扰测试。建议集成测试直接实例化 `CameraWorker`，不通过 `TvpEngine`，或将 `HealthConfig.restart_on_failure=False` 以禁用自动重启。
+
+### 异步 API 测试示例
+
+```python
+# tests/integration/test_api.py
+import pytest
+from httpx import AsyncClient
+from api.app import create_app
+
+@pytest.mark.asyncio
+async def test_health_endpoint_async():
+    async with AsyncClient(app=create_app(), base_url="http://test") as client:
+        resp = await client.get("/api/v1/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "healthy" in data
+    assert "task_count" in data
+```
 
 ---
 

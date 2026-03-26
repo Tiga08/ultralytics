@@ -68,6 +68,8 @@ class YoloModel(ModelBase):
 
 优先级：`CUDA` → `NPU（Ascend/torch_npu）` → `MLU（寒武纪/torch_mlu）` → `CPU`
 
+最终选定的设备在启动时记录到日志：`logger.info("model_device_selected", device=...)`。
+
 ```python
 def _resolve_device(self, device: str) -> str:
     if device != "auto":
@@ -113,6 +115,8 @@ class ModelManager(metaclass=SingletonMeta):
 
     def get(self, name: str) -> ModelBase:
         """按名称获取已加载的模型，未找到时抛出 KeyError"""
+        # init() 中任意模型加载失败（路径不存在、显存不足等）会抛出 RuntimeError，
+        # 导致 TvpEngine.start() 中断，不会静默跳过
 ```
 
 ### 使用方式
@@ -138,8 +142,22 @@ result = model.infer(frame.image)
 
 ```python
 class OnnxModel(ModelBase):
-    def load(self, weight_path, imgsz, **kwargs): ...
-    def infer(self, frame): ...
+    def load(self, weight_path: str, imgsz: int = 640, **kwargs) -> None:
+        import onnxruntime as ort
+        self._session = ort.InferenceSession(weight_path,
+                                             providers=["CUDAExecutionProvider",
+                                                        "CPUExecutionProvider"])
+        self._imgsz = imgsz
+        self._input_name = self._session.get_inputs()[0].name
+
+    def infer(self, frame: np.ndarray) -> InferResult:
+        # 预处理：resize → normalize → NCHW
+        blob = self._preprocess(frame)
+        outputs = self._session.run(None, {self._input_name: blob})
+        boxes = self._postprocess(outputs)
+        return InferResult(boxes=boxes)
+
     @property
-    def class_names(self): ...
+    def class_names(self) -> dict[int, str]:
+        return {}  # 按实际模型填写
 ```

@@ -11,9 +11,9 @@ class ViolationEvent:
     detector_name: str
     violation_type: str
     timestamp: float
-    frame_snapshot: Any          # numpy array，BGR 格式
+    frame_snapshot: np.ndarray | None   # BGR 格式，shape (H, W, 3)；无快照时为 None
     bounding_boxes: list[list[float]]
-    extra: dict = field(default_factory=dict)
+    extra: dict = field(default_factory=dict)   # 示例：{"zone_id": "zone_A", "duration_s": 3.5}
 ```
 
 **为何放在 `pipeline/` 层？**
@@ -47,6 +47,7 @@ class ViolationEvent:
 class DetectorBase(ABC):
 
     # 子类可声明 CONFIG_CLASS，TvpEngine 会自动将裸字典 validate 为该类型
+    # 若不声明（保持 None），setup(config) 的 config 参数类型为原始 dict，由子类自行解析
     CONFIG_CLASS: type | None = None
 
     @abstractmethod
@@ -55,7 +56,9 @@ class DetectorBase(ABC):
 
     @abstractmethod
     def process(self, frame: Frame, infer_result: InferResult) -> list[ViolationEvent]:
-        """处理单帧，返回违规事件列表（可为空）"""
+        """处理单帧，返回违规事件列表（可为空）。
+        实现中应用 try/except 捕获异常并记录日志，
+        不允许让异常传播到 CameraWorker 线程（否则会导致整个摄像头停止）。"""
 
     def emit_violation(self, event: ViolationEvent) -> None:
         """向所有输出适配器发送违规事件"""

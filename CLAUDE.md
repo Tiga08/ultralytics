@@ -34,7 +34,6 @@ TVP 设计文档位于 `docs/tiga-vision-platform/`：
 ### 代码组织
 
 - 所有新 TVP 代码放在独立的 `tvp/` 目录下，**不修改** ultralytics 核心代码
-- 参考原始设计文档：`2026-03-25-tiga-vision-platform-design.md`
 
 ### 检测器插件开发
 

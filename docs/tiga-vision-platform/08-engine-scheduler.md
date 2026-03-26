@@ -1,5 +1,8 @@
 # 主引擎与调度
 
+> **已知限制**：`TaskPriority` 字段当前仅作信息记录，**不影响任务调度顺序**，不做排队和抢占。
+> 基于优先级的调度（引入 `PriorityQueue`）计划在 Phase 5 实现。详见 [11-deployment.md](11-deployment.md) 路线图。
+
 ## TvpEngine — 主引擎
 
 **文件**：`core/engine.py`
@@ -45,6 +48,7 @@ class TvpEngine(metaclass=SingletonMeta):
    b. 实例化检测器（__init__）
    c. 若声明了 CONFIG_CLASS，validate 配置字典
    d. 调用 detector.setup(config)
+      ↑ 若此处抛出异常，需回滚：对已初始化的所有检测器调用 cleanup()，中止 create_task()
 3. 创建 InferencePipeline("yolo_detection")
 4. 定义 worker_factory（无参闭包，每次返回新 CameraWorker 实例）
 5. TaskScheduler.submit(task_id, worker, priority, worker_factory)
@@ -69,7 +73,7 @@ class TaskPriority(IntEnum):
     LOW = 4
 ```
 
-当前 `priority` 仅作信息记录，不做排队调度（不排序、不抢占）。如需实现基于优先级的调度，可引入 `PriorityQueue`。
+当前 `priority` 仅作信息记录，不做排队调度（不排序、不抢占）。基于优先级的调度（引入 `PriorityQueue`、实现任务抢占）计划在 Phase 5 实现。
 
 ### 核心接口
 
@@ -124,8 +128,17 @@ failed  ──超限──► failed          （保持 failed，需人工介入
 
 ---
 
+## HealthMonitor 默认配置
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `check_interval` | 30 秒 | 两次健康检查的间隔 |
+| `restart_on_failure` | `true` | 检测到不健康时是否自动重启 |
+| `max_restart_count` | 3 次 | 超过此次数后标记为 `failed`，需人工介入 |
+
 ## 线程安全
 
-- `TvpEngine._lock`：`threading.RLock()`，保护 `_task_status` 和 `_scheduler._tasks`
+- `TvpEngine._lock`：`threading.RLock()`，保护 `_task_status` 字典
 - `TaskScheduler._lock`：`threading.RLock()`，保护 `_tasks` 字典
+- 二者均在同一 `_lock` 作用域内修改，保证 `_task_status` 与 `_tasks` 的一致性
 - `OutputAdapter.send()`：各适配器客户端（confluent-kafka Producer、MinIO、paho-mqtt）自身线程安全

@@ -63,7 +63,8 @@ class VideoCapture:
         """生成器：持续产出 Frame，stop_event 置位时退出"""
         while not stop_event.is_set():
             # ffprobe 探测分辨率 → 启动 ffmpeg → 读帧循环
-            # 任何异常 → kill ffmpeg → sleep → 重连
+            # 任何异常 → kill ffmpeg → sleep(reconnect_interval) → 重连
+            # finally 块中务必调用 process.kill() + process.wait()，防止僵尸进程积累
 ```
 
 ---
@@ -110,11 +111,11 @@ stop() → stop_event.set() → 等待 VideoCapture 生成器退出
 ```python
 @property
 def is_healthy(self) -> bool:
-    """超过 60 秒没有新帧，认为不健康"""
+    """超过 camera_timeout 秒没有新帧，认为不健康（默认 60 秒）"""
     return (time.time() - self._health_last_frame_ts) < 60
 ```
 
-`HealthMonitor` 定期调用此属性，不健康时触发重启。
+`HealthMonitor` 定期调用此属性，不健康时触发重启。超时阈值建议通过 `HealthConfig.camera_timeout`（秒）配置，默认 60 秒。
 
 ### 构造参数
 
@@ -133,5 +134,7 @@ CameraWorker(
 ## 暂停行为说明
 
 `pause_task()` 调用后，`CameraWorker` 线程**继续运行**（继续采帧推理），但每个 `DetectorBase.is_active()` 返回 `False`，因此检测器的 `process()` 不会被调用，不产生违规事件。
+
+暂停/恢复按 **`task_id` 粒度**控制，同一 `CameraWorker` 上绑定的多个任务互相独立——暂停其中一个任务，不影响同一摄像头上的其他任务继续检测。
 
 这样设计的好处：恢复时无需重启线程，响应更快。

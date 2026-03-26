@@ -32,6 +32,36 @@ Tiga Vision Platform 是基于 `ultralytics`、`FastAPI`、`Pydantic v2` 构建�
 
 ---
 
+## 环境要求
+
+| 项目 | 要求 |
+|------|------|
+| Python | ≥ 3.10 |
+| FFmpeg | 需系统安装（`ffmpeg` 和 `ffprobe` 可在 PATH 中找到） |
+| GPU | 可选：NVIDIA GPU（CUDA）/ 华为昇腾 NPU / 寒武纪 MLU，或纯 CPU 推理 |
+
+## 快速上手
+
+```bash
+# 1. 安装依赖
+pip install -e ".[dev]" -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# 2. 准备配置文件（参见 02-config-system.md）
+cp config.yaml.example config.yaml
+# 编辑 config.yaml：填写模型权重路径、摄像头 RTSP 地址等
+
+# 3. 准备任务 YAML（可选，也可通过 API 动态创建）
+cp tasks/example.yaml tasks/my_task.yaml
+
+# 4. 启动服务
+python run.py --config config.yaml
+
+# 5. 访问 API 文档
+# http://localhost:8555/docs
+```
+
+---
+
 ## 文档导航
 
 | 文件 | 内容 |

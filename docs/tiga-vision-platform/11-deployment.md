@@ -1,5 +1,33 @@
 # 部署与路线图
 
+## 最简 Dockerfile 参考
+
+```dockerfile
+# 多阶段构建，生产镜像不包含 dev 依赖
+FROM python:3.11-slim AS base
+
+# 安装 FFmpeg
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 安装依赖
+COPY pyproject.toml .
+RUN pip install -e "." -i https://pypi.tuna.tsinghua.edu.cn/simple --no-cache-dir
+
+COPY . .
+
+EXPOSE 8555
+
+CMD ["python", "run.py", "--config", "config.yaml"]
+```
+
+> GPU 推理时使用 `nvidia/cuda:12.1-cudnn8-runtime-ubuntu22.04` 作为基础镜像，并额外安装 Python 3.11。
+
+---
+
 ## 依赖清单（pyproject.toml）
 
 ```toml
@@ -67,6 +95,18 @@ FastAPI 应用启动（Uvicorn）
 
 1. **启动验证**：`python run.py --config config.yaml`，访问 `http://localhost:8555/docs`
 
+   `run.py` 支持以下命令行参数：
+
+   ```
+   python run.py --help
+   usage: run.py [-h] [--config CONFIG] [--port PORT] [--log-level {DEBUG,INFO,WARNING,ERROR}]
+
+   optional arguments:
+     --config      配置文件路径（默认：config.yaml）
+     --port        覆盖 config.yaml 中的服务端口
+     --log-level   覆盖日志级别
+   ```
+
 2. **任务创建**：POST `/api/v1/tasks` 提交测试任务配置，确认响应 `success: true`
 
 3. **插件加载**：GET `/api/v1/plugins` 确认所有检测器与输出适配器已注册
@@ -77,7 +117,7 @@ FastAPI 应用启动（Uvicorn）
 
 6. **Kafka 投递验证**：使用 `kafka-console-consumer` 订阅 `tvp_violation_events`，触发违规后确认消息到达
 
-7. **MinIO 截图验证**：登录 MinIO Console（默认 `http://localhost:9001`），确认 `tvp-evidence` bucket 中出现 JPEG 截图
+7. **MinIO 截图验证**：登录 MinIO Console（默认 `http://localhost:9001`，开发环境默认账密 `minioadmin/minioadmin`，生产环境须修改），确认 `tvp-evidence` bucket 中出现 JPEG 截图
 
 8. **HealthMonitor 重启验证**：手动断开摄像头 RTSP 流 60 秒以上，观察日志出现 `task_unhealthy_restarting`，恢复流后确认任务自动恢复
 
@@ -95,9 +135,25 @@ FastAPI 应用启动（Uvicorn）
 | **Phase 2** | 模型层：YoloModel（ultralytics 封装）+ ModelManager | 必须 |
 | **Phase 3** | 迁移核心检测器（示例：区域入侵）+ 同步编写单元测试 | 必须 |
 | **Phase 4** | 输出适配器：Kafka + MinIO + MQTT + Local + 适配器单元测试 | 必须 |
-| **Phase 5** | 健康检查 + 任务优先级调度 | 高 |
+| **Phase 5** | 健康检查 + 任务优先级调度（引入 `PriorityQueue`、实现任务抢占、更新 `TaskScheduler.submit()`） | 高 |
 | **Phase 6** | 扩展业务检测器（随各检测器同步补充测试） | 中 |
 | **Phase 7** | 集成测试套件（端到端管道验证） | 中 |
 | **Phase 8** | Prometheus 指标 + 日志优化 | 低 |
 
 > **测试原则**：单元测试随各 Phase 同步编写，不延后到 Phase 7；Phase 7 仅负责端到端集成测试的补全。
+
+各 Phase 验收标准（覆盖率）：
+
+| Phase | 验收覆盖率目标 |
+|-------|-------------|
+| Phase 1 | `config/` ≥ 90% |
+| Phase 2 | `model/` ≥ 80% |
+| Phase 3 | `detector/` ≥ 80% |
+| Phase 4 | `output/` ≥ 70% |
+| Phase 5+ | `pipeline/` ≥ 70%，整体 ≥ 80% |
+
+安装依赖时请使用清华大学 PyPI 镜像：
+
+```bash
+pip install -e ".[dev]" -i https://pypi.tuna.tsinghua.edu.cn/simple
+```

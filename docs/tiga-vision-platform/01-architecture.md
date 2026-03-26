@@ -105,10 +105,10 @@ tvp/
 RTSP 流
   ↓
 VideoCapture.stream()          # FFmpeg 子进程采集，生成 Frame 对象；断流自动重连
-  ↓
+  ↓                            # 断流策略：任何异常 → kill ffmpeg → sleep(reconnect_interval 秒) → 重启进程，无限重试
 CameraWorker.run()             # 线程循环，从 capture 读帧
   ↓
-InferencePipeline.run(frame)   # ModelManager.get(model_name).infer() → InferResult
+InferencePipeline.run(frame)   # 封装 ModelManager.get(model_name).infer()，屏蔽推理细节 → InferResult
   ↓
 DetectorBase.process(frame, infer_result)
   ├─ ByteTrackWrapper.update()  # 各检测器实例内部持有独立 tracker
@@ -122,6 +122,20 @@ DetectorBase.emit_violation()
   └─ LocalOutputAdapter.send()  # 本地 JPEG + JSON（调试用）
 ```
 
+### ViolationEvent 数据结构
+
+违规事件由检测器生成，在数据流中传递给所有输出适配器。定义于 `pipeline/events.py`（参见 [06-detector.md](06-detector.md)）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `task_id` | `str` | 任务 ID |
+| `detector_name` | `str` | 检测器注册名称 |
+| `violation_type` | `str` | 违规类型标识 |
+| `timestamp` | `float` | Unix 时间戳（秒） |
+| `frame_snapshot` | `np.ndarray \| None` | 违规帧 BGR 图像 |
+| `bounding_boxes` | `list[list[float]]` | 边界框列表，每项 `[x1, y1, x2, y2]` |
+| `extra` | `dict` | 扩展字段，如 `{"zone_id": "zone_A", "duration_s": 3.5}` |
+
 ---
 
 ## 层次关系
@@ -131,10 +145,20 @@ API 层（FastAPI）
     ↓ Depends(get_engine)
 TvpEngine（单例协调入口）
     ├─ ModelManager（模型缓存）
-    ├─ TaskScheduler（任务生命周期）
-    ├─ HealthMonitor（心跳检测）
+    ├─ TaskScheduler（任务生命周期）  ← 持有并管理 CameraWorker 线程，通过 worker_factory 支持重启
+    ├─ HealthMonitor（心跳检测）      ← 定期调用 scheduler.check_health()，触发不健康任务重启
     ├─ OutputAdapters（全局共享）
     └─ CameraWorker × N（每摄像头一线程）
            └─ DetectorBase × M（每任务多检测器）
                   └─ ByteTrackWrapper（每检测器独立 tracker）
 ```
+
+### 线程模型
+
+| 线程 | 数量 | 类型 | 退出方式 |
+|------|------|------|---------|
+| `CameraWorker` | 每摄像头 1 个 | `daemon=True`，名为 `cam-{id}` | `stop_event.set()` |
+| `HealthMonitor` | 全局 1 个 | `daemon=True` | `stop_event.set()` |
+| paho-mqtt 后台线程 | 0 或 1 个 | `daemon`，由 paho 内部管理 | `loop_stop()` |
+
+`CameraWorker` 线程由 `TaskScheduler` 持有和启动；`worker_factory` 是一个无参闭包，每次调用返回一个全新的 `CameraWorker` 实例，用于 `HealthMonitor` 触发重启场景（Python `Thread` 对象不可重启）。
