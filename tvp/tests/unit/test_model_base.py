@@ -1,6 +1,10 @@
 import numpy as np
 import pytest
+from unittest.mock import patch, MagicMock
 from model.base import InferResult, ModelBase
+from model.yolo_model import YoloModel
+from model.model_manager import ModelManager
+from utils.singleton import SingletonMeta
 
 
 def test_infer_result_defaults():
@@ -28,11 +32,6 @@ def test_concrete_model_must_implement_all():
     with pytest.raises(TypeError):
         PartialModel()
 
-
-from unittest.mock import patch, MagicMock
-from model.yolo_model import YoloModel
-from model.model_manager import ModelManager
-from utils.singleton import SingletonMeta
 
 def test_yolo_model_infer():
     with patch("model.yolo_model.YOLO") as MockYOLO:
@@ -81,3 +80,18 @@ def test_model_manager_get_unknown_raises():
     SingletonMeta._instances.pop(ModelManager, None)
     with pytest.raises(KeyError):
         ModelManager().get("nonexistent_model")
+
+
+def test_model_manager_get_success():
+    SingletonMeta._instances.pop(ModelManager, None)
+    with patch("model.model_manager.YoloModel") as MockYoloModel:
+        mock_model_instance = MagicMock()
+        MockYoloModel.return_value = mock_model_instance
+
+        mock_config = MagicMock()
+        mock_config.root.items.return_value = [("det", MagicMock(path="w.pt", imgsz=640, conf=0.3))]
+
+        manager = ModelManager()
+        manager.init(mock_config, device="cpu")
+        result = manager.get("det")
+        assert result is mock_model_instance
