@@ -1,11 +1,49 @@
 server:
   host: "0.0.0.0"
   port: 8555
+
+video:
+  capture_backend: "ffmpeg"
+  reconnect_interval: 5
+  frame_queue_size: 30
+
+inference:
+  backend: "auto"   # auto | pytorch | tensorrt | cpu
+  thread_count: 4
+
 model_weights:
   yolo_detection:
     path: "weights/yolov8m_det.pt"
     imgsz: 960
     conf: 0.3
+
+tracking:
+  high_thresh: 0.6
+  low_thresh: 0.1
+  buffer: 30
+
+# kafka:
+#   bootstrap_servers: "tiga-kafka:9092"
+#   topic_violation: "tvp_violation_events"
+
+# minio:
+#   endpoint: "tiga-minio:9000"
+#   access_key: "minioadmin"   # 推荐通过 TVP__MINIO__ACCESS_KEY 环境变量注入
+#   secret_key: "minioadmin"
+#   bucket: "tvp-evidence"
+#   secure: false
+
+# mqtt:
+#   host: "tiga-mqtt"
+#   port: 1883
+#   topic_violation: "tvp/violation"
+
 logging:
   level: "INFO"
   format: "json"
+  file_path: "logs/"
+
+health:
+  check_interval: 30
+  restart_on_failure: true
+  max_restart_count: 3

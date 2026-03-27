@@ -1,6 +1,6 @@
 # tvp/api/app.py
 from fastapi import FastAPI
-from api.routers import tasks, cameras, health, plugins
+from api.routers import tasks, cameras, health, plugins, metrics
 
 
 def create_app() -> FastAPI:
@@ -12,4 +12,5 @@ def create_app() -> FastAPI:
     app.include_router(cameras.router)
     app.include_router(health.router)
     app.include_router(plugins.router)
+    app.include_router(metrics.router)
     return app

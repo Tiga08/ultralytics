@@ -1,0 +1,21 @@
+task_id: "regional_invasion_cam1"
+task_name: "A1 机位区域入侵检测"
+stand_id: "STAND_A1"
+priority: "NORMAL"
+camera:
+  id: "CAM_A1_001"
+  name: "A1_北侧相机"
+  rtsp_url: "rtsp://tiga-camera:8554/stream1"
+  rtsp_interval: 0.5
+
+schedule:
+  enabled_days: [1, 2, 3, 4, 5, 6, 7]
+  start_time: "00:00:00"
+  end_time: "23:59:59"
+
+detectors:
+  - name: "regional_invasion"
+    config:
+      send_interval: 60
+      conf_threshold: 0.5
+      forbidden_zone: [[100, 200], [500, 200], [500, 600], [100, 600]]
