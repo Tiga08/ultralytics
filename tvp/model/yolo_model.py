@@ -49,7 +49,7 @@ class YoloModel(ModelBase):
         except ImportError:
             pass
         try:
-            import torch_mlu
+            import torch_mlu  # noqa: F401
             if torch.mlu.is_available():
                 return "mlu:0"
         except ImportError:

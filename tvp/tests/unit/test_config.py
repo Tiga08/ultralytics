@@ -2,7 +2,6 @@ import pytest
 import yaml
 from config.models import (
     TvpConfig, TaskConfig, ModelWeightsConfig,
-    ScheduleConfig, KafkaConfig,
 )
 from config.loader import ConfigLoader
 

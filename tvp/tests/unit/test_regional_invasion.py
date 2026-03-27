@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 from unittest.mock import MagicMock
 from detector.regional_invasion import RegionalInvasionDetector
 from model.base import InferResult
