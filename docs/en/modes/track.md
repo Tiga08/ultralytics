@@ -56,7 +56,7 @@ The default tracker is BoT-SORT.
 
 ## Tracking
 
-To run the tracker on video streams, use a trained Detect, Segment, or Pose model such as YOLO26n, YOLO26n-seg, or YOLO26n-pose.
+To run the tracker on video streams, use a trained Detect, Segment, or Pose model such as YOLO26n, YOLO26n-seg, or YOLO26n-pose. You can train custom models locally or on cloud GPUs through [Ultralytics Platform](https://platform.ultralytics.com).
 
 !!! example
 
@@ -483,7 +483,7 @@ Multi-object tracking with Ultralytics YOLO has numerous applications, including
 - **Retail:** People tracking for in-store analytics and security.
 - **Aquaculture:** Fish tracking for monitoring aquatic environments.
 - **Sports Analytics:** Tracking players and equipment for performance analysis.
-- **Security Systems:** [Monitoring suspicious activities](https://www.ultralytics.com/blog/security-alarm-system-projects-with-ultralytics-yolov8) and creating [security alarms](https://docs.ultralytics.com/guides/security-alarm-system/).
+- **Security Systems:** [Monitoring suspicious activities](https://www.ultralytics.com/blog/security-alarm-system-projects-with-ultralytics-yolov8) and creating [security alarms](https://docs.ultralytics.com/guides/security-alarm-system).
 
 These applications benefit from Ultralytics YOLO's ability to process high-frame-rate videos in real time with exceptional accuracy.
 
